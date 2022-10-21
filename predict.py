@@ -1,6 +1,4 @@
 from __future__ import print_function, division
-import warnings
-warnings.filterwarnings("ignore")
 import os.path
 import pandas as pd
 import torch
@@ -11,6 +9,23 @@ from torchvision import datasets, models, transforms
 import dlib
 import os
 import argparse
+
+cnn_face_detector = dlib.cnn_face_detection_model_v1('dlib_models/mmod_human_face_detector.dat')
+sp = dlib.shape_predictor('dlib_models/shape_predictor_5_face_landmarks.dat')
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+model_fair_7 = torchvision.models.resnet34(pretrained=True)
+model_fair_7.fc = nn.Linear(model_fair_7.fc.in_features, 18)
+model_fair_7.load_state_dict(torch.load('fair_face_models/fairface_alldata_20191111.pt', map_location=torch.device('cpu')))
+model_fair_7 = model_fair_7.to(device)
+model_fair_7.eval()
+
+model_fair_4 = torchvision.models.resnet34(pretrained=True)
+model_fair_4.fc = nn.Linear(model_fair_4.fc.in_features, 18)
+model_fair_4.load_state_dict(torch.load('fair_face_models/fairface_alldata_4race_20191111.pt', map_location=torch.device('cpu')))
+model_fair_4 = model_fair_4.to(device)
+model_fair_4.eval()
 
 def rect_to_bb(rect):
 	# take a bounding predicted by dlib and convert it
@@ -23,15 +38,15 @@ def rect_to_bb(rect):
 	# return a tuple of (x, y, w, h)
 	return (x, y, w, h)
 
-def detect_face(image_paths,  SAVE_DETECTED_AT, default_max_size=800,size = 300, padding = 0.25):
-    cnn_face_detector = dlib.cnn_face_detection_model_v1('dlib_models/mmod_human_face_detector.dat')
-    sp = dlib.shape_predictor('dlib_models/shape_predictor_5_face_landmarks.dat')
+def detect_face(image_paths,  SAVE_DETECTED_AT, default_max_size=800,size = 300, padding = 1.25):
     base = 2000  # largest width and height
     for index, image_path in enumerate(image_paths):
         if index % 1000 == 0:
             print('---%d/%d---' %(index, len(image_paths)))
-        img = dlib.load_rgb_image(image_path)
-
+        try:
+            img = dlib.load_rgb_image(image_path)
+        except RuntimeError:
+            return
         old_height, old_width, _ = img.shape
 
         if old_width > old_height:
@@ -59,19 +74,6 @@ def detect_face(image_paths,  SAVE_DETECTED_AT, default_max_size=800,size = 300,
 
 def predidct_age_gender_race(save_prediction_at, imgs_path = 'cropped_faces/'):
     img_names = [os.path.join(imgs_path, x) for x in os.listdir(imgs_path)]
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-    model_fair_7 = torchvision.models.resnet34(pretrained=True)
-    model_fair_7.fc = nn.Linear(model_fair_7.fc.in_features, 18)
-    model_fair_7.load_state_dict(torch.load('fair_face_models/fairface_alldata_20191111.pt'))
-    model_fair_7 = model_fair_7.to(device)
-    model_fair_7.eval()
-
-    model_fair_4 = torchvision.models.resnet34(pretrained=True)
-    model_fair_4.fc = nn.Linear(model_fair_4.fc.in_features, 18)
-    model_fair_4.load_state_dict(torch.load('fair_face_models/fairface_alldata_4race_20191111.pt'))
-    model_fair_4 = model_fair_4.to(device)
-    model_fair_4.eval()
 
     trans = transforms.Compose([
         transforms.ToPILImage(),
@@ -206,7 +208,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--csv', dest='input_csv', action='store',
                         help='csv file of image path where col name for image path is "img_path')
-    dlib.DLIB_USE_CUDA = True
+    dlib.DLIB_USE_CUDA = False
     print("using CUDA?: %s" % dlib.DLIB_USE_CUDA)
     args = parser.parse_args()
     SAVE_DETECTED_AT = "detected_faces"
